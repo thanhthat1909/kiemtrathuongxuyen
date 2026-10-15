@@ -6,9 +6,12 @@ st.set_page_config(
     page_title="Kiểm tra Trực tuyến Môn Tin học", page_icon="💻", layout="centered"
 )
 
-# Khởi tạo cơ sở dữ liệu lưu kết quả tạm thời trong Session State
+# Khởi tạo cơ sở dữ liệu lưu kết quả tạm thời và trạng thái đăng nhập trong Session State
 if "results_db" not in st.session_state:
     st.session_state.results_db = []
+
+if "is_authenticated" not in st.session_state:
+    st.session_state.is_authenticated = False
 
 # Danh sách 20 câu hỏi trắc nghiệm
 QUIZ_DATA = [
@@ -209,7 +212,7 @@ QUIZ_DATA = [
     },
 ]
 
-# Tạo menu lựa chọn giữa chế độ Học sinh làm bài và Giáo viên xem bảng điểm
+# Tạo menu lựa chọn giữa chế độ Học sinh và Giáo viên
 st.sidebar.title("📌 Điều hướng")
 role = st.sidebar.radio(
     "Chọn chế độ:", ("👨‍🎓 Học sinh làm bài", "👩‍🏫 Giáo viên xem bảng điểm")
@@ -219,7 +222,6 @@ if role == "👨‍🎓 Học sinh làm bài":
   st.title("💻 KIỂM TRA TRỰC TUYẾN MÔN TIN HỌC")
   st.markdown("---")
 
-  # Nhập thông tin học sinh
   fullname = st.text_input(
       "Nhập họ và tên đầy đủ của em:", placeholder="Ví dụ: Nguyễn Văn A"
   )
@@ -233,7 +235,6 @@ if role == "👨‍🎓 Học sinh làm bài":
       user_answers = {}
       for idx, q in enumerate(QUIZ_DATA):
         st.markdown(f"**Câu {idx + 1}:** {q['question']}")
-        # Lấy chữ cái đầu tiên (A, B, C, D) làm lựa chọn
         choice = st.radio(
             "Chọn đáp án:",
             q["options"],
@@ -242,7 +243,7 @@ if role == "👨‍🎓 Học sinh làm bài":
             label_visibility="collapsed",
         )
         if choice:
-          user_answers[str(q["id"])] = choice[0]  # Lấy ký tự đầu A/B/C/D
+          user_answers[str(q["id"])] = choice[0]
         st.write("")
 
       submitted = st.form_submit_button("🚀 Nộp bài thi")
@@ -251,7 +252,6 @@ if role == "👨‍🎓 Học sinh làm bài":
         if not fullname.strip():
           st.error("Vui lòng nhập họ và tên trước khi nộp bài!")
         else:
-          # Chấm điểm
           score = 0
           total = len(QUIZ_DATA)
           for q in QUIZ_DATA:
@@ -264,7 +264,6 @@ if role == "👨‍🎓 Học sinh làm bài":
 
           final_score = round((score / total) * 10, 2)
 
-          # Lưu kết quả vào danh sách chung
           submission = {
               "fullname": fullname,
               "score": final_score,
@@ -284,19 +283,43 @@ if role == "👨‍🎓 Học sinh làm bài":
     st.warning("⚠️ Vui lòng nhập họ và tên ở ô trên để hiển thị đề kiểm tra.")
 
 elif role == "👩‍🏫 Giáo viên xem bảng điểm":
-  st.title("📊 QUẢN LÝ BẢNG ĐIỂM HỌC SINH")
+  st.title("🔐 ĐĂNG NHẬP HỆ THỐNG GIÁO VIÊN")
   st.markdown("---")
 
-  if st.session_state.results_db:
-    st.write(
-        f"Tổng số bài đã nộp: **{len(st.session_state.results_db)}** học sinh"
-    )
+  # Kiểm tra trạng thái đăng nhập
+  if not st.session_state.is_authenticated:
+    with st.form("login_form"):
+      username_input = st.text_input("Tên đăng nhập:")
+      password_input = st.text_input("Mật khẩu:", type="password")
+      login_btn = st.form_submit_button("Đăng nhập")
 
-    # Hiển thị bảng kết quả
-    st.table(st.session_state.results_db)
-
-    if st.button("🗑️ Xóa toàn bộ dữ liệu bảng điểm"):
-      st.session_state.results_db = []
-      st.rerun()
+      if login_btn:
+        if username_input == "admin" and password_input == "Giaovien@2026":
+          st.session_state.is_authenticated = True
+          st.success("Đăng nhập thành công!")
+          st.rerun()
+        else:
+          st.error("Sai tên đăng nhập hoặc mật khẩu! Vui lòng thử lại.")
   else:
-    st.info("Hiện tại chưa có học sinh nào nộp bài.")
+    # Giao diện bảng điểm sau khi đăng nhập thành công
+    col1, col2 = st.columns([3, 1])
+    with col1:
+      st.title("📊 QUẢN LÝ BẢNG ĐIỂM HỌC SINH")
+    with col2:
+      if st.button("Đăng xuất"):
+        st.session_state.is_authenticated = False
+        st.rerun()
+
+    st.markdown("---")
+
+    if st.session_state.results_db:
+      st.write(
+          f"Tổng số bài đã nộp: **{len(st.session_state.results_db)}** học sinh"
+      )
+      st.table(st.session_state.results_db)
+
+      if st.button("🗑️ Xóa toàn bộ dữ liệu bảng điểm"):
+        st.session_state.results_db = []
+        st.rerun()
+    else:
+      st.info("Hiện tại chưa có học sinh nào nộp bài.")
