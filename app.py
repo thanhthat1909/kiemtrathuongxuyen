@@ -1,17 +1,17 @@
 from datetime import datetime
 import streamlit as st
 
-# Cấu hình trang web
+# Cấu hình giao diện trang web
 st.set_page_config(
-    page_title="Kiểm tra Trực tuyến Môn Tin học", page_icon="💻", layout="centered"
+    page_title="Thi Trực Tuyến Môn Tin Học", page_icon="💻", layout="wide"
 )
 
-# Khởi tạo cơ sở dữ liệu lưu kết quả tạm thời và trạng thái đăng nhập trong Session State
+# Khởi tạo Session State để lưu kết quả và trạng thái đăng nhập giáo viên
 if "results_db" not in st.session_state:
     st.session_state.results_db = []
 
-if "is_authenticated" not in st.session_state:
-    st.session_state.is_authenticated = False
+if "teacher_logged_in" not in st.session_state:
+    st.session_state.teacher_logged_in = False
 
 # Danh sách 20 câu hỏi trắc nghiệm
 QUIZ_DATA = [
@@ -212,14 +212,14 @@ QUIZ_DATA = [
     },
 ]
 
-# Tạo menu lựa chọn giữa chế độ Học sinh và Giáo viên
-st.sidebar.title("📌 Điều hướng")
+# Menu chọn chế độ
+st.sidebar.title("📌 Điều Hướng")
 role = st.sidebar.radio(
-    "Chọn chế độ:", ("👨‍🎓 Học sinh làm bài", "👩‍🏫 Giáo viên xem bảng điểm")
+    "Chọn chế độ:", ("👨‍🎓 Học sinh làm bài", "👩‍🏫 Giáo viên quản lý")
 )
 
 if role == "👨‍🎓 Học sinh làm bài":
-  st.title("💻 KIỂM TRA TRỰC TUYẾN MÔN TIN HỌC")
+  st.title("💻 HỆ THỐNG KIỂM TRA TRỰC TUYẾN MÔN TIN HỌC")
   st.markdown("---")
 
   fullname = st.text_input(
@@ -230,6 +230,19 @@ if role == "👨‍🎓 Học sinh làm bài":
     st.info(
         f"Xin chào em **{fullname}**. Bài kiểm tra gồm 20 câu hỏi trắc nghiệm."
     )
+
+    # Chèn mã JavaScript để giám sát (phát hiện chuyển tab/thu nhỏ cửa sổ)
+    anti_cheat_code = """
+        <script>
+        // Lắng nghe sự kiện chuyển tab hoặc ẩn cửa sổ
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
+                alert("⚠️ CẢNH BÁO: Hệ thống phát hiện em vừa rời khỏi màn hình thi (chuyển tab hoặc thu nhỏ cửa sổ)! Hành vi này sẽ được ghi nhận vào biên bản.");
+            }
+        });
+        </script>
+        """
+    st.components.v1.html(anti_cheat_code, height=0)
 
     with st.form("quiz_form"):
       user_answers = {}
@@ -243,10 +256,10 @@ if role == "👨‍🎓 Học sinh làm bài":
             label_visibility="collapsed",
         )
         if choice:
-          user_answers[str(q["id"])] = choice[0]
+          user_answers[str(q["id"])] = choice[0]  # Lấy ký tự A, B, C, D
         st.write("")
 
-      submitted = st.form_submit_button("🚀 Nộp bài thi")
+      submitted = st.form_submit_button("🚀 Nộp Bài Thi")
 
       if submitted:
         if not fullname.strip():
@@ -272,7 +285,7 @@ if role == "👨‍🎓 Học sinh làm bài":
           }
           st.session_state.results_db.append(submission)
 
-          st.success("🎉 Nộp bài thành công!")
+          st.success("🎉 Nộp bài thi thành công!")
           st.balloons()
           st.metric(
               label="Kết quả của bạn",
@@ -280,41 +293,39 @@ if role == "👨‍🎓 Học sinh làm bài":
               delta=f"Đúng {score}/{total} câu",
           )
   else:
-    st.warning("⚠️ Vui lòng nhập họ và tên ở ô trên để hiển thị đề kiểm tra.")
+    st.warning("⚠️ Vui lòng nhập họ và tên ở ô phía trên để bắt đầu làm bài.")
 
-elif role == "👩‍🏫 Giáo viên xem bảng điểm":
+elif role == "👩‍🏫 Giáo viên quản lý":
   st.title("🔐 ĐĂNG NHẬP HỆ THỐNG GIÁO VIÊN")
   st.markdown("---")
 
-  # Kiểm tra trạng thái đăng nhập
-  if not st.session_state.is_authenticated:
+  if not st.session_state.teacher_logged_in:
     with st.form("login_form"):
-      username_input = st.text_input("Tên đăng nhập:")
-      password_input = st.text_input("Mật khẩu:", type="password")
-      login_btn = st.form_submit_button("Đăng nhập")
+      username = st.text_input("Tên đăng nhập:")
+      password = st.text_input("Mật khẩu:", type="password")
+      login_btn = st.form_submit_button("Đăng Nhập")
 
       if login_btn:
-        if username_input == "admin" and password_input == "Giaovien@2026":
-          st.session_state.is_authenticated = True
+        if username == "admin" and password == "Giaovien@2026":
+          st.session_state.teacher_logged_in = True
           st.success("Đăng nhập thành công!")
           st.rerun()
         else:
-          st.error("Sai tên đăng nhập hoặc mật khẩu! Vui lòng thử lại.")
+          st.error("Sai tên đăng nhập hoặc mật khẩu!")
   else:
-    # Giao diện bảng điểm sau khi đăng nhập thành công
-    col1, col2 = st.columns([3, 1])
+    col1, col2 = st.columns([4, 1])
     with col1:
-      st.title("📊 QUẢN LÝ BẢNG ĐIỂM HỌC SINH")
+      st.title("📊 BẢNG ĐIỂM VÀ GIÁM SÁT HỌC SINH")
     with col2:
-      if st.button("Đăng xuất"):
-        st.session_state.is_authenticated = False
+      if st.button("Đăng Xuất"):
+        st.session_state.teacher_logged_in = False
         st.rerun()
 
     st.markdown("---")
 
     if st.session_state.results_db:
       st.write(
-          f"Tổng số bài đã nộp: **{len(st.session_state.results_db)}** học sinh"
+          f"Tổng số học sinh đã nộp bài: **{len(st.session_state.results_db)}**"
       )
       st.table(st.session_state.results_db)
 
