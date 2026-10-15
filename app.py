@@ -66,7 +66,6 @@ st.set_page_config(
     page_title="Thi Trực Tuyến Môn Tin Học", page_icon="💻", layout="wide"
 )
 
-# Duy trì trạng thái đăng nhập của giáo viên không bị mất khi reload
 if "teacher_logged_in" not in st.session_state:
   st.session_state.teacher_logged_in = False
 
@@ -294,27 +293,21 @@ if role == "👨‍🎓 Học sinh làm bài":
         "current_user"
     ) != fullname:
       st.session_state.current_user = fullname
-      # Copy và xáo trộn danh sách câu hỏi
       shuffled_questions = list(ORIGINAL_QUIZ_DATA)
       random.shuffle(shuffled_questions)
 
-      # Xáo trộn các phương án lựa chọn trong từng câu hỏi và lưu lại đáp án đúng tương ứng
       processed_quiz = []
       for q in shuffled_questions:
-        # Tách lấy chữ cái đáp án đúng cũ (ví dụ "C") và nội dung tương ứng
         correct_text = next(
             opt for opt in q["options"] if opt.startswith(q["answer"])
         )
-
         options = list(q["options"])
         random.shuffle(options)
 
-        # Tìm lại ký tự nhãn mới sau khi xáo trộn (A, B, C, D)
         new_correct_letter = ""
         new_options = []
         labels = ["A", "B", "C", "D"]
         for idx, opt in enumerate(options):
-          # Lấy nội dung sau dấu chấm (ví dụ " 2009")
           opt_content = opt.split(".", 1)[1]
           new_opt_str = f"{labels[idx]}.{opt_content}"
           new_options.append(new_opt_str)
@@ -328,7 +321,6 @@ if role == "👨‍🎓 Học sinh làm bài":
             "answer": new_correct_letter,
         })
       st.session_state.shuffled_quiz = processed_quiz
-      st.session_state.violation_count = 0
 
     quiz_to_render = st.session_state.shuffled_quiz
 
@@ -374,7 +366,6 @@ if role == "👨‍🎓 Học sinh làm bài":
             if (document.hidden) {{
                 vCount++;
                 document.getElementById("violation-display").innerText = vCount;
-                // Đồng bộ giá trị vào input ẩn để Streamlit nhận diện được
                 const hiddenInput = document.getElementById("hidden_violations");
                 if (hiddenInput) {{
                     hiddenInput.value = vCount;
@@ -399,12 +390,9 @@ if role == "👨‍🎓 Học sinh làm bài":
             label_visibility="collapsed",
         )
         if choice:
-          user_answers[str(q["id"])] = choice[
-              0
-          ]  # Lấy ký tự chữ cái đầu A, B, C, D
+          user_answers[str(q["id"])] = choice[0]
         st.write("")
 
-      # Thêm ô ẩn nhận số lần vi phạm từ JS
       violations_input = st.text_input(
           "violations_hidden", value="0", label_visibility="collapsed"
       )
@@ -427,13 +415,11 @@ if role == "👨‍🎓 Học sinh làm bài":
 
           final_score = round((score / total) * 10, 2)
 
-          # Lấy số lần vi phạm thực tế từ form
           try:
             recorded_violations = int(violations_input)
           except:
             recorded_violations = 0
 
-          # Lưu vào cơ sở dữ liệu SQLite vĩnh viễn
           save_result(
               fullname, final_score, f"{score}/{total}", recorded_violations
           )
@@ -469,20 +455,18 @@ elif role == "👩‍🏫 Giáo viên quản lý":
         else:
           st.error("Sai tên đăng nhập hoặc mật khẩu!")
   else:
-    col1, col2 = st.columns([4, 1])
+    col1, col2 = st.columns([3, 1])
     with col1:
-      st.title("📊 BẢNG ĐIỂM & GIÁM SÁT LỖI VI PHẠM HỌC SINH")
+      st.title("📊 BẢNG ĐIỂM & GIÁM SÁT LỖI VI PHẠM")
     with col2:
-      if st.button("Đăng Xuất"):
-        st.session_state.teacher_logged_in = False
+      if st.button("🔄 Làm mới bảng điểm"):
         st.rerun()
 
+    if st.button("Đăng Xuất"):
+      st.session_state.teacher_logged_in = False
+      st.rerun()
+
     st.markdown("---")
-
-    # Tự động làm mới bảng điểm mỗi 5 giây để giáo viên xem trực tiếp học sinh nộp bài mà không cần bấm reload
-    from streamlit_autorefresh import st_autorefresh
-
-    st_autorefresh(interval=5000, limit=1000000, key="datarefresh")
 
     rows = get_all_results()
 
@@ -506,6 +490,6 @@ elif role == "👩‍🏫 Giáo viên quản lý":
         st.rerun()
     else:
       st.info(
-          "Hiện tại chưa có học sinh nào nộp bài. Bảng sẽ tự động cập nhật khi"
-          " có học sinh nộp."
+          "Hiện tại chưa có học sinh nào nộp bài. Bấm nút 'Làm mới bảng điểm'"
+          " phía trên để cập nhật kết quả mới nhất."
       )
