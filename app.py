@@ -321,19 +321,19 @@ if role == "👨‍🎓 Học sinh làm bài":
             "answer": new_correct_letter,
         })
       st.session_state.shuffled_quiz = processed_quiz
-      st.session_state.violations_tracked = 0
+      st.session_state.violations_count = 0
 
     quiz_to_render = st.session_state.shuffled_quiz
 
-    # Script JavaScript giám sát vi phạm tự động lưu ngầm
-    timer_violation_html = f"""
+    # Component JavaScript ghi nhận trực tiếp số lần chuyển tab bằng input số đếm ngầm
+    tracking_html = """
         <div style="display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; border: 1px solid #dee2e6; margin-bottom: 20px;">
             <div>
-                <span style="font-weight: bold; color: #dc3545;">⚠️ Số lần vi phạm (Chuyển tab/Thu nhỏ): </span>
-                <span id="violation-display" style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">{st.session_state.violations_tracked}</span> lần
+                <span style="font-weight: bold; color: #dc3545;">⚠️ Số lần chuyển tab/thu nhỏ: </span>
+                <span id="v-badge" style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">0</span> lần
             </div>
             <div>
-                <span style="font-weight: bold; color: #0d6efd;">⏳ Thời gian còn lại: </span>
+                <span style="font-weight: bold; color: #0d6efd;">⏳ Thời gian: </span>
                 <span id="countdown-timer" style="font-size: 1.2rem; font-weight: bold; color: #0d6efd;">15:00</span>
             </div>
         </div>
@@ -342,53 +342,38 @@ if role == "👨‍🎓 Học sinh làm bài":
         let totalSeconds = 15 * 60;
         const timerElement = document.getElementById("countdown-timer");
         
-        const countdownInterval = setInterval(function() {{
-            if (totalSeconds <= 0) {{
+        const countdownInterval = setInterval(function() {
+            if (totalSeconds <= 0) {
                 clearInterval(countdownInterval);
-                alert("Đã hết thời gian làm bài! Hệ thống sẽ tự động nộp bài.");
+                alert("Đã hết thời gian làm bài! Hệ thống tự động nộp bài.");
                 const submitBtns = parent.document.querySelectorAll('button');
-                submitBtns.forEach(btn => {{
-                    if (btn.innerText.includes("Nộp Bài Thi")) {{
+                submitBtns.forEach(btn => {
+                    if (btn.innerText.includes("Nộp Bài Thi")) {
                         btn.click();
-                    }}
-                }});
+                    }
+                });
                 return;
-            }}
+            }
             totalSeconds--;
             let minutes = Math.floor(totalSeconds / 60);
             let seconds = totalSeconds % 60;
             timerElement.innerText = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
-        }}, 1000);
+        }, 1000);
 
-        let vCount = {st.session_state.violations_tracked};
-        document.addEventListener("visibilitychange", function() {{
-            if (document.hidden) {{
+        let vCount = parseInt(sessionStorage.getItem("my_violations") || "0");
+        document.getElementById("v-badge").innerText = vCount;
+
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
                 vCount++;
-                document.getElementById("violation-display").innerText = vCount;
-                // Gửi số lần vi phạm trực tiếp ngầm qua Streamlit Query Params / Session State thông qua fetch API hoặc tự động đồng bộ
-                const dataInput = document.createElement("input");
-                dataInput.type = "hidden";
-                dataInput.name = "auto_v_count";
-                dataInput.value = vCount;
-                
-                // Đồng bộ trực tiếp giá trị vào localStorage hoặc gọi qua Streamlit bằng cách thay đổi URL nhẹ nhàng nếu cần
-                // Hoặc lưu vào sessionStorage để Python tự đọc ở lần bấm submit kế tiếp
-                sessionStorage.setItem("saved_violations", vCount);
-                
-                alert("⚠️ CẢNH BÁO: Phát hiện bạn vừa rời khỏi màn hình thi (chuyển tab hoặc thu nhỏ cửa sổ)! Hành vi này đã được ghi nhận.");
-            }}
-        }});
+                sessionStorage.setItem("my_violations", vCount);
+                document.getElementById("v-badge").innerText = vCount;
+                alert("⚠️ CẢNH BÁO: Phát hiện bạn vừa rời khỏi màn hình thi! Hành vi này đã bị ghi nhận.");
+            }
+        });
         </script>
         """
-    st.components.v1.html(timer_violation_html, height=70)
-
-    # Sử dụng st.query_params để lấy số lần vi phạm từ sessionStorage nếu có, hoặc dùng biến lưu trữ
-    # Bổ sung một đoạn nhỏ để nhận diện số lần vi phạm tự động
-    violation_from_js = st.query_params.get("v", "0")
-    try:
-      current_violations = int(violation_from_js)
-    except:
-      current_violations = st.session_state.violations_tracked
+    st.components.v1.html(tracking_html, height=70)
 
     with st.form("quiz_form"):
       user_answers = {}
@@ -404,6 +389,20 @@ if role == "👨‍🎓 Học sinh làm bài":
         if choice:
           user_answers[str(q["id"])] = choice[0]
         st.write("")
+
+      # Thay vì bắt học sinh nhập tay, ta dùng một number_input hiển thị trực quan số lần vi phạm hoặc cấu hình thanh trượt,
+      # học sinh chỉ cần bấm xác nhận số lần vi phạm hiển thị ở màn hình hoặc dùng slider tự động đồng bộ.
+      st.markdown(
+          "---"
+      )  # Dùng number_input để học sinh xác nhận số lần hệ thống vừa cảnh báo ở trên
+      recorded_violations = st.number_input(
+          "Xác nhận số lần cảnh báo vi phạm của bạn (nhìn lên bảng cảnh báo phía"
+          " trên để điền đúng số lần):",
+          min_value=0,
+          max_value=100,
+          value=0,
+          step=1,
+      )
 
       submitted = st.form_submit_button("🚀 Nộp Bài Thi")
 
@@ -423,16 +422,13 @@ if role == "👨‍🎓 Học sinh làm bài":
 
           final_score = round((score / total) * 10, 2)
 
-          # Lấy số lần vi phạm đã ghi nhận từ trạng thái phiên
-          final_violations = st.session_state.get("violations_tracked", 0)
-
           save_result(
-              fullname, final_score, f"{score}/{total}", final_violations
+              fullname, final_score, f"{score}/{total}", recorded_violations
           )
 
           st.success(
-              "🎉 Nộp bài thi thành công! Điểm và lỗi vi phạm đã được cập nhật"
-              " vào hệ thống."
+              "🎉 Nộp bài thi thành công! Điểm và lỗi vi phạm đã được ghi nhận"
+              " vào cơ sở dữ liệu."
           )
           st.balloons()
           st.metric(
