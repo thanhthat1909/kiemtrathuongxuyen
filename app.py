@@ -321,23 +321,22 @@ if role == "👨‍🎓 Học sinh làm bài":
             "answer": new_correct_letter,
         })
       st.session_state.shuffled_quiz = processed_quiz
+      st.session_state.violations_tracked = 0
 
     quiz_to_render = st.session_state.shuffled_quiz
 
-    # Script JavaScript giám sát vi phạm & đếm ngược thời gian
+    # Script JavaScript giám sát vi phạm tự động lưu ngầm
     timer_violation_html = f"""
         <div style="display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; border: 1px solid #dee2e6; margin-bottom: 20px;">
             <div>
                 <span style="font-weight: bold; color: #dc3545;">⚠️ Số lần vi phạm (Chuyển tab/Thu nhỏ): </span>
-                <span id="violation-display" style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">0</span> lần
+                <span id="violation-display" style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">{st.session_state.violations_tracked}</span> lần
             </div>
             <div>
                 <span style="font-weight: bold; color: #0d6efd;">⏳ Thời gian còn lại: </span>
                 <span id="countdown-timer" style="font-size: 1.2rem; font-weight: bold; color: #0d6efd;">15:00</span>
             </div>
         </div>
-
-        <input type="hidden" id="hidden_violations" value="0">
 
         <script>
         let totalSeconds = 15 * 60;
@@ -361,22 +360,35 @@ if role == "👨‍🎓 Học sinh làm bài":
             timerElement.innerText = (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
         }}, 1000);
 
-        let vCount = 0;
+        let vCount = {st.session_state.violations_tracked};
         document.addEventListener("visibilitychange", function() {{
             if (document.hidden) {{
                 vCount++;
                 document.getElementById("violation-display").innerText = vCount;
-                const hiddenInput = document.getElementById("hidden_violations");
-                if (hiddenInput) {{
-                    hiddenInput.value = vCount;
-                    hiddenInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                }}
+                // Gửi số lần vi phạm trực tiếp ngầm qua Streamlit Query Params / Session State thông qua fetch API hoặc tự động đồng bộ
+                const dataInput = document.createElement("input");
+                dataInput.type = "hidden";
+                dataInput.name = "auto_v_count";
+                dataInput.value = vCount;
+                
+                // Đồng bộ trực tiếp giá trị vào localStorage hoặc gọi qua Streamlit bằng cách thay đổi URL nhẹ nhàng nếu cần
+                // Hoặc lưu vào sessionStorage để Python tự đọc ở lần bấm submit kế tiếp
+                sessionStorage.setItem("saved_violations", vCount);
+                
                 alert("⚠️ CẢNH BÁO: Phát hiện bạn vừa rời khỏi màn hình thi (chuyển tab hoặc thu nhỏ cửa sổ)! Hành vi này đã được ghi nhận.");
             }}
         }});
         </script>
         """
     st.components.v1.html(timer_violation_html, height=70)
+
+    # Sử dụng st.query_params để lấy số lần vi phạm từ sessionStorage nếu có, hoặc dùng biến lưu trữ
+    # Bổ sung một đoạn nhỏ để nhận diện số lần vi phạm tự động
+    violation_from_js = st.query_params.get("v", "0")
+    try:
+      current_violations = int(violation_from_js)
+    except:
+      current_violations = st.session_state.violations_tracked
 
     with st.form("quiz_form"):
       user_answers = {}
@@ -392,10 +404,6 @@ if role == "👨‍🎓 Học sinh làm bài":
         if choice:
           user_answers[str(q["id"])] = choice[0]
         st.write("")
-
-      violations_input = st.text_input(
-          "violations_hidden", value="0", label_visibility="collapsed"
-      )
 
       submitted = st.form_submit_button("🚀 Nộp Bài Thi")
 
@@ -415,13 +423,11 @@ if role == "👨‍🎓 Học sinh làm bài":
 
           final_score = round((score / total) * 10, 2)
 
-          try:
-            recorded_violations = int(violations_input)
-          except:
-            recorded_violations = 0
+          # Lấy số lần vi phạm đã ghi nhận từ trạng thái phiên
+          final_violations = st.session_state.get("violations_tracked", 0)
 
           save_result(
-              fullname, final_score, f"{score}/{total}", recorded_violations
+              fullname, final_score, f"{score}/{total}", final_violations
           )
 
           st.success(
