@@ -1,17 +1,71 @@
 from datetime import datetime
+import sqlite3
 import streamlit as st
+
+# --- CẤU HÌNH DATABASE SQLITE ---
+DB_NAME = "ket_qua_thi.db"
+
+
+def init_db():
+  conn = sqlite3.connect(DB_NAME)
+  cursor = conn.cursor()
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fullname TEXT NOT NULL,
+            score REAL NOT NULL,
+            raw_score TEXT NOT NULL,
+            violations INTEGER NOT NULL,
+            time TEXT NOT NULL
+        )
+    """)
+  conn.commit()
+  conn.close()
+
+
+init_db()
+
+
+def save_result(fullname, score, raw_score, violations):
+  conn = sqlite3.connect(DB_NAME)
+  cursor = conn.cursor()
+  time_str = datetime.now().strftime("%H:%M:%S - %d/%m/%Y")
+  cursor.execute(
+      "INSERT INTO results (fullname, score, raw_score, violations, time) VALUES"
+      " (?, ?, ?, ?, ?)",
+      (fullname, score, raw_score, violations, time_str),
+  )
+  conn.commit()
+  conn.close()
+
+
+def get_all_results():
+  conn = sqlite3.connect(DB_NAME)
+  cursor = conn.cursor()
+  cursor.execute(
+      "SELECT fullname, score, raw_score, violations, time FROM results ORDER BY"
+      " id DESC"
+  )
+  rows = cursor.fetchall()
+  conn.close()
+  return rows
+
+
+def clear_db():
+  conn = sqlite3.connect(DB_NAME)
+  cursor = conn.cursor()
+  cursor.execute("DELETE FROM results")
+  conn.commit()
+  conn.close()
+
 
 # Cấu hình giao diện trang web
 st.set_page_config(
     page_title="Thi Trực Tuyến Môn Tin Học", page_icon="💻", layout="wide"
 )
 
-# Khởi tạo Session State để lưu kết quả và trạng thái đăng nhập giáo viên
-if "results_db" not in st.session_state:
-    st.session_state.results_db = []
-
 if "teacher_logged_in" not in st.session_state:
-    st.session_state.teacher_logged_in = False
+  st.session_state.teacher_logged_in = False
 
 # Danh sách 20 câu hỏi trắc nghiệm
 QUIZ_DATA = [
@@ -231,18 +285,32 @@ if role == "👨‍🎓 Học sinh làm bài":
         f"Xin chào em **{fullname}**. Bài kiểm tra gồm 20 câu hỏi trắc nghiệm."
     )
 
-    # Chèn mã JavaScript để giám sát (phát hiện chuyển tab/thu nhỏ cửa sổ)
-    anti_cheat_code = """
+    # Khởi tạo biến đếm vi phạm trong session của học sinh
+    if "violation_count" not in st.session_state:
+      st.session_state.violation_count = 0
+
+    # Đoạn mã JavaScript tinh chỉnh để đếm số lần chuyển tab / thu nhỏ cửa sổ
+    anti_cheat_script = f"""
+        <div id="violation-box" style="padding: 10px; background-color: #ffe6e6; border: 1px solid #ff4d4d; border-radius: 5px; color: #cc0000; font-weight: bold; margin-bottom: 15px; display: none;">
+            ⚠️ CẢNH BÁO: Phát hiện bạn vừa rời khỏi màn hình thi (chuyển tab hoặc thu nhỏ cửa sổ)! Số lần vi phạm: <span id="v-count">{st.session_state.violation_count}</span>
+        </div>
         <script>
-        // Lắng nghe sự kiện chuyển tab hoặc ẩn cửa sổ
-        document.addEventListener("visibilitychange", function() {
-            if (document.hidden) {
-                alert("⚠️ CẢNH BÁO: Hệ thống phát hiện em vừa rời khỏi màn hình thi (chuyển tab hoặc thu nhỏ cửa sổ)! Hành vi này sẽ được ghi nhận vào biên bản.");
-            }
-        });
+        let vCount = {st.session_state.violation_count};
+        document.addEventListener("visibilitychange", function() {{
+            if (document.hidden) {{
+                vCount++;
+                const box = document.getElementById("violation-box");
+                const span = document.getElementById("v-count");
+                if(box && span) {{
+                    box.style.display = "block";
+                    span.innerText = vCount;
+                }}
+                alert("⚠️ CẢNH BÁO VI PHẠM: Bạn vừa rời khỏi màn hình làm bài! Hành vi này đã bị ghi lại.");
+            }}
+        }});
         </script>
         """
-    st.components.v1.html(anti_cheat_code, height=0)
+    st.components.v1.html(anti_cheat_script, height=70)
 
     with st.form("quiz_form"):
       user_answers = {}
@@ -256,7 +324,7 @@ if role == "👨‍🎓 Học sinh làm bài":
             label_visibility="collapsed",
         )
         if choice:
-          user_answers[str(q["id"])] = choice[0]  # Lấy ký tự A, B, C, D
+          user_answers[str(q["id"])] = choice[0]
         st.write("")
 
       submitted = st.form_submit_button("🚀 Nộp Bài Thi")
@@ -276,16 +344,15 @@ if role == "👨‍🎓 Học sinh làm bài":
               score += 1
 
           final_score = round((score / total) * 10, 2)
+          # Lưu vào SQLite Database vĩnh viễn
+          save_result(
+              fullname,
+              final_score,
+              f"{score}/{total}",
+              st.session_state.violation_count,
+          )
 
-          submission = {
-              "fullname": fullname,
-              "score": final_score,
-              "raw_score": f"{score}/{total}",
-              "time": datetime.now().strftime("%H:%M:%S - %d/%m/%Y"),
-          }
-          st.session_state.results_db.append(submission)
-
-          st.success("🎉 Nộp bài thi thành công!")
+          st.success("🎉 Nộp bài thi thành công và đã cập nhật vào hệ thống!")
           st.balloons()
           st.metric(
               label="Kết quả của bạn",
@@ -315,7 +382,7 @@ elif role == "👩‍🏫 Giáo viên quản lý":
   else:
     col1, col2 = st.columns([4, 1])
     with col1:
-      st.title("📊 BẢNG ĐIỂM VÀ GIÁM SÁT HỌC SINH")
+      st.title("📊 BẢNG ĐIỂM VÀ GIÁM SÁT LỖI VI PHẠM")
     with col2:
       if st.button("Đăng Xuất"):
         st.session_state.teacher_logged_in = False
@@ -323,14 +390,29 @@ elif role == "👩‍🏫 Giáo viên quản lý":
 
     st.markdown("---")
 
-    if st.session_state.results_db:
-      st.write(
-          f"Tổng số học sinh đã nộp bài: **{len(st.session_state.results_db)}**"
+    # Lấy dữ liệu từ Database SQLite
+    rows = get_all_results()
+
+    if rows:
+      st.write(f"Tổng số học sinh đã nộp bài: **{len(rows)}**")
+
+      # Hiển thị dạng bảng trực quan kèm lỗi vi phạm
+      import pandas as pd
+
+      df = pd.DataFrame(
+          rows,
+          columns=[
+              "Họ và Tên",
+              "Điểm Số (Hệ 10)",
+              "Số Câu Đúng",
+              "Số Lần Vi Phạm",
+              "Thời Gian Nộp",
+          ],
       )
-      st.table(st.session_state.results_db)
+      st.dataframe(df, use_container_width=True)
 
       if st.button("🗑️ Xóa toàn bộ dữ liệu bảng điểm"):
-        st.session_state.results_db = []
+        clear_db()
         st.rerun()
     else:
       st.info("Hiện tại chưa có học sinh nào nộp bài.")
